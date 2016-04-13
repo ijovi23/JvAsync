@@ -14,7 +14,7 @@
 
 @property (copy, nonatomic) JvAsyncCallback callback;
 
-@property (strong, atomic) id currentData;
+@property (strong, atomic) id result;
 @property (strong, nonatomic) NSMutableArray *results;
 
 @property (strong, atomic) id currentError;
@@ -46,6 +46,7 @@
 - (void)seriesTasks:(NSArray<JvFunc> *)tasks callback:(JvAsyncCallback)callback {
     
     self.callback = callback;
+    self.result = self.results;
     
     if ([self setTaskStackWithTasks:tasks]) {
         [self series_doTask];
@@ -66,12 +67,12 @@
     //enter a child thread
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         
-        func(^(NSError *error, id data){
+        func(^(NSError *error, id result){
             
             //return the main thread
             dispatch_async(dispatch_get_main_queue(), ^{
                 self.currentError = error;
-                [self addToResultsWithData:data];
+                [self addResultsObject:result];
                 if (self.currentError) {
                     [self doCallback];
                 }else{
@@ -109,12 +110,12 @@
     //enter a child thread
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         
-        func(self.currentData, ^(NSError *error, id data){
+        func(self.result, ^(NSError *error, id result){
             
             //return the main thread
             dispatch_async(dispatch_get_main_queue(), ^{
                 self.currentError = error;
-                self.currentData = data;
+                self.result = result;
                 if (self.currentError) {
                     [self doCallback];
                 }else{
@@ -133,7 +134,43 @@
 - (void)parallelTasks:(NSArray<JvFunc> *)tasks callback:(JvAsyncCallback)callback {
     
     self.callback = callback;
+    self.result = self.results;
     
+    [self fillResultsWithCount:tasks.count];
+    
+//    if ([self setTaskStackWithTasks:tasks]) {
+//        [self parallel_doTask];
+//    }else{
+//        [self doCallback];
+//    }
+    
+    for (NSUInteger idx = 0; idx < tasks.count; idx++) {
+        JvFunc func = tasks[idx];
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            func(^(NSError *error, id result){
+                
+                //return the main thread
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self.currentError = error;
+                    NSUInteger func_idx = [tasks indexOfObject:func];
+                    [self replaceObjectInResultsAtIndex:func_idx withObject:result];
+                    if (self.currentError) {
+                        [self doCallback];
+                    }
+                });
+                
+            });
+        });
+    }
+}
+
+- (void)parallel_doTask {
+    JvFunc func = (JvFunc)[self popTaskStack];
+    
+    if (func == NULL) {
+        [self doCallback];
+        return;
+    }
     
     
 }
@@ -163,9 +200,23 @@
     return NULL;
 }
 
-- (void)addToResultsWithData:(id)data {
-    if (data) {
-        [self.results addObject:data];
+- (void)fillResultsWithCount:(NSUInteger)count {
+    [self.results removeAllObjects];
+    for (NSUInteger i = 0; i < count; i++) {
+        [self.results addObject:[NSNull null]];
+    }
+}
+
+- (void)replaceObjectInResultsAtIndex:(NSUInteger)index withObject:(id)object {
+    if (!object) {
+        object = [NSNull null];
+    }
+    [self.results replaceObjectAtIndex:index withObject:object];
+}
+
+- (void)addResultsObject:(id)obj {
+    if (obj) {
+        [self.results addObject:obj];
     }else{
         [self.results addObject:[NSNull null]];
     }
@@ -173,7 +224,7 @@
 
 - (void)doCallback {
     if (self.callback) {
-        self.callback(self.currentError, self.currentData);
+        self.callback(self.currentError, self.result);
     }
 }
 

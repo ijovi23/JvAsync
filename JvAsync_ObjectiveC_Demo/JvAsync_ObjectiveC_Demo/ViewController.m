@@ -18,7 +18,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     // Do any additional setup after loading the view, typically from a nib.
-    [self test];
+    [self series_test];
 }
 
 - (void)didReceiveMemoryWarning {
@@ -26,8 +26,33 @@
     // Dispose of any resources that can be recreated.
 }
 
+- (void)series_test {
+    JvFunc task1 = ^(JvAsyncCallback callback) {
+        NSLog(@"task1");
+        callback(nil, @"A");
+    };
+    
+    JvFunc task2 = ^(JvAsyncCallback callback) {
+        NSLog(@"task2");
+        callback(nil, @"B");
+    };
+    
+    JvFunc task3 = ^(JvAsyncCallback callback) {
+        NSLog(@"task3");
+        callback(nil, @"C");
+    };
+    
+    [[JvAsync async]seriesTasks:@[task1, task2, task3] callback:^(NSError *error, id result) {
+        if (error) {
+            NSLog(@"Error:%@", error.domain);
+        }
+        if (result) {
+            NSLog(@"Result:%@", result);
+        }
+    }];
+}
 
-- (void)test {
+- (void)waterfall_test {
     JvWaterfallFunc task1 = ^(id data, JvAsyncCallback callback) {
         NSLog(@"task1");
         callback(nil, @"A");
@@ -48,12 +73,12 @@
     [[JvAsync async]waterfallTasks:@[task1,
                                     task2,
                                     task3]
-                          callback:^(NSError *error, id data) {
+                          callback:^(NSError *error, id result) {
                               if (error) {
                                   NSLog(@"Error:%@", error.domain);
                               }
-                              if (data) {
-                                  NSLog(@"Result:%@", data);
+                              if (result) {
+                                  NSLog(@"Result:%@", result);
                               }
                           }];
 }

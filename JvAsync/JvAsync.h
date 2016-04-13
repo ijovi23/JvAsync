@@ -8,7 +8,7 @@
 
 #import <Foundation/Foundation.h>
 
-typedef void(^JvAsyncCallback)(NSError *error, id data);
+typedef void(^JvAsyncCallback)(NSError *error, id result);
 typedef void(^JvFunc)(JvAsyncCallback callback);
 typedef void(^JvWaterfallFunc) (id data, JvAsyncCallback callback);
 
