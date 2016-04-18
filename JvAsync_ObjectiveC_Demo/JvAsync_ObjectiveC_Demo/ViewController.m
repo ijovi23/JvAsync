@@ -18,7 +18,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     // Do any additional setup after loading the view, typically from a nib.
-    [self series_test];
+    [self parallel_test];
 }
 
 - (void)didReceiveMemoryWarning {
@@ -81,6 +81,23 @@
                                   NSLog(@"Result:%@", result);
                               }
                           }];
+}
+
+- (void)parallel_test {
+    [[JvAsync async]parallelTasks:@[
+                                    ^(JvAsyncCallback callback) {[NSThread sleepForTimeInterval:2]; NSLog(@"task1"); callback(nil, @"A");},
+                                    ^(JvAsyncCallback callback) {[NSThread sleepForTimeInterval:6]; NSLog(@"task2"); callback([NSError errorWithDomain:@"HAHA" code:123 userInfo:nil], @"B");},
+                                    ^(JvAsyncCallback callback) {[NSThread sleepForTimeInterval:5]; NSLog(@"task3"); callback(nil, @"C");},
+                                    ^(JvAsyncCallback callback) {[NSThread sleepForTimeInterval:3]; NSLog(@"task4"); callback(nil, @"D");},
+                                    ^(JvAsyncCallback callback) {[NSThread sleepForTimeInterval:4]; NSLog(@"task5"); callback([NSError errorWithDomain:@"HAHA" code:123 userInfo:nil], @"E");},
+                                    ] callback:^(NSError *error, id result) {
+        if (error) {
+            NSLog(@"Error:%@", error.domain);
+        }
+        if (result) {
+            NSLog(@"Result:%@", result);
+        }
+    }];
 }
 
 @end

@@ -27,7 +27,7 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        self.results = [NSMutableArray array];
+        [self initProperties];
     }
     return self;
 }
@@ -37,6 +37,14 @@
     return instance;
 }
 
+- (void)initProperties {
+    self.taskStack = [NSMutableArray array];
+    self.results = [NSMutableArray array];
+    self.callback = nil;
+    self.result = nil;
+    self.currentError = nil;
+}
+
 - (void)dealloc {
     NSLog(@"----- JvAsync Dealloc -----");
 }
@@ -44,7 +52,7 @@
 #pragma mark - series
 
 - (void)seriesTasks:(NSArray<JvFunc> *)tasks callback:(JvAsyncCallback)callback {
-    
+    [self initProperties];
     self.callback = callback;
     self.result = self.results;
     
@@ -87,7 +95,7 @@
 #pragma mark - waterfall
 
 - (void)waterfallTasks:(NSArray<JvWaterfallFunc> *)tasks callback:(JvAsyncCallback)callback {
-    
+    [self initProperties];
     self.callback = callback;
     
     if ([self setTaskStackWithTasks:tasks]) {
@@ -132,27 +140,38 @@
 #pragma mark - parallel
 
 - (void)parallelTasks:(NSArray<JvFunc> *)tasks callback:(JvAsyncCallback)callback {
-    
+    [self initProperties];
     self.callback = callback;
     self.result = self.results;
     
     [self fillResultsWithCount:tasks.count];
     
-//    if ([self setTaskStackWithTasks:tasks]) {
-//        [self parallel_doTask];
-//    }else{
-//        [self doCallback];
-//    }
+    NSMutableArray<JvFunc_data> *tasks_pl = [NSMutableArray array];
+    for (JvFunc func in tasks) {
+        JvFunc_data func_pl = ^(id data, JvAsyncCallback_data callback) {
+            func(^(NSError *error, id result) {
+                if (callback) {
+                    callback(error, result, data);
+                }
+            });
+        };
+        [tasks_pl addObject:func_pl];
+    }
+    
+    dispatch_queue_t queue = dispatch_queue_create("com.dispatch.concurrent", DISPATCH_QUEUE_CONCURRENT);
     
     for (NSUInteger idx = 0; idx < tasks.count; idx++) {
-        JvFunc func = tasks[idx];
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-            func(^(NSError *error, id result){
-                
+        JvFunc_data func_pl = tasks_pl[idx];
+        dispatch_async(queue, ^{
+            func_pl(@(idx), ^(NSError *error, id result, id data){
+                if (self.currentError) {
+                    //When an error occurred during running a task, throw away the incomplete tasks' resuls;
+                    return;
+                }
                 //return the main thread
                 dispatch_async(dispatch_get_main_queue(), ^{
                     self.currentError = error;
-                    NSUInteger func_idx = [tasks indexOfObject:func];
+                    NSUInteger func_idx = [data integerValue];
                     [self replaceObjectInResultsAtIndex:func_idx withObject:result];
                     if (self.currentError) {
                         [self doCallback];
@@ -182,7 +201,7 @@
         return NO;
     }
     
-    self.taskStack = [NSMutableArray array];
+    [self.taskStack removeAllObjects];
     for (NSInteger i = tasks.count - 1; i >= 0; i--) {
         [self.taskStack addObject:tasks[i]];
     }
