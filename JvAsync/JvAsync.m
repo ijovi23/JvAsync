@@ -8,11 +8,18 @@
 
 #import "JvAsync.h"
 
+typedef void(^JvCallback3)(NSError *error, id result, id data);
+typedef void(^JvFunc_data) (id data, JvCallback3 callback);
+
 @interface JvAsync ()
 
+@property (copy, nonatomic) JvFunc task;
 @property (strong, nonatomic) NSMutableArray *taskStack;
 
-@property (copy, nonatomic) JvAsyncCallback callback;
+@property (copy, nonatomic) JvCallback callback;
+@property (copy, nonatomic) JvCallback2 callback2;
+
+@property (copy, nonatomic) JvTest test;
 
 @property (strong, atomic) id result;
 @property (strong, nonatomic) NSMutableArray *results;
@@ -38,9 +45,12 @@
 }
 
 - (void)initProperties {
+    self.task = NULL;
     self.taskStack = [NSMutableArray array];
     self.results = [NSMutableArray array];
-    self.callback = nil;
+    self.callback = NULL;
+    self.callback2 = NULL;
+    self.test = NULL;
     self.result = nil;
     self.currentError = nil;
 }
@@ -51,24 +61,24 @@
 
 #pragma mark - series
 
-- (void)seriesTasks:(NSArray<JvFunc> *)tasks callback:(JvAsyncCallback)callback {
+- (void)seriesTasks:(NSArray<JvFunc2> *)tasks callback:(JvCallback2)callback {
     [self initProperties];
-    self.callback = callback;
+    self.callback2 = callback;
     self.result = self.results;
     
     if ([self setTaskStackWithTasks:tasks]) {
         [self series_doTask];
     }else{
-        [self doCallback];
+        [self doCallback2];
     }
     
 }
 
 - (void)series_doTask {
-    JvFunc func = (JvFunc)[self popTaskStack];
+    JvFunc2 func = (JvFunc2)[self popTaskStack];
     
     if (func == NULL) {
-        [self doCallback];
+        [self doCallback2];
         return;
     }
     
@@ -82,7 +92,7 @@
                 self.currentError = error;
                 [self addResultsObject:result];
                 if (self.currentError) {
-                    [self doCallback];
+                    [self doCallback2];
                 }else{
                     [self series_doTask];
                 }
@@ -94,14 +104,14 @@
 
 #pragma mark - waterfall
 
-- (void)waterfallTasks:(NSArray<JvWaterfallFunc> *)tasks callback:(JvAsyncCallback)callback {
+- (void)waterfallTasks:(NSArray<JvWaterfallFunc> *)tasks callback:(JvCallback2)callback {
     [self initProperties];
-    self.callback = callback;
+    self.callback2 = callback;
     
     if ([self setTaskStackWithTasks:tasks]) {
         [self waterfall_doTask];
     }else{
-        [self doCallback];
+        [self doCallback2];
     }
     
 }
@@ -111,7 +121,7 @@
     JvWaterfallFunc func = (JvWaterfallFunc)[self popTaskStack];
     
     if (func == NULL) {
-        [self doCallback];
+        [self doCallback2];
         return;
     }
     
@@ -125,7 +135,7 @@
                 self.currentError = error;
                 self.result = result;
                 if (self.currentError) {
-                    [self doCallback];
+                    [self doCallback2];
                 }else{
                     [self waterfall_doTask];
                 }
@@ -139,16 +149,16 @@
 
 #pragma mark - parallel
 
-- (void)parallelTasks:(NSArray<JvFunc> *)tasks callback:(JvAsyncCallback)callback {
+- (void)parallelTasks:(NSArray<JvFunc2> *)tasks callback:(JvCallback2)callback {
     [self initProperties];
-    self.callback = callback;
+    self.callback2 = callback;
     self.result = self.results;
     
     [self fillResultsWithCount:tasks.count];
     
     NSMutableArray<JvFunc_data> *tasks_pl = [NSMutableArray array];
-    for (JvFunc func in tasks) {
-        JvFunc_data func_pl = ^(id data, JvAsyncCallback_data callback) {
+    for (JvFunc2 func in tasks) {
+        JvFunc_data func_pl = ^(id data, JvCallback3 callback) {
             func(^(NSError *error, id result) {
                 if (callback) {
                     callback(error, result, data);
@@ -158,7 +168,7 @@
         [tasks_pl addObject:func_pl];
     }
     
-    dispatch_queue_t queue = dispatch_queue_create("com.dispatch.concurrent", DISPATCH_QUEUE_CONCURRENT);
+    dispatch_queue_t queue = dispatch_queue_create("jv.concurrent.parallel", DISPATCH_QUEUE_CONCURRENT);
     
     for (NSUInteger idx = 0; idx < tasks.count; idx++) {
         JvFunc_data func_pl = tasks_pl[idx];
@@ -174,7 +184,7 @@
                     NSUInteger func_idx = [data integerValue];
                     [self replaceObjectInResultsAtIndex:func_idx withObject:result];
                     if (self.currentError) {
-                        [self doCallback];
+                        [self doCallback2];
                     }
                 });
                 
@@ -183,15 +193,53 @@
     }
 }
 
-- (void)parallel_doTask {
-    JvFunc func = (JvFunc)[self popTaskStack];
+#pragma mark - whilst & until
+
+- (void)whilstTest:(JvTest)test fn:(JvFunc)fn callback:(JvCallback)callback {
+    [self initProperties];
+    self.task = fn;
+    self.test = test;
+    self.callback = callback;
     
-    if (func == NULL) {
+    if (test == NULL || fn == NULL) {
         [self doCallback];
-        return;
     }
     
+    [self whilst_doTask_whenTestReturn:YES];
+}
+
+- (void)untilTest:(JvTest)test fn:(JvFunc)fn callback:(JvCallback)callback {
+    [self initProperties];
+    self.task = fn;
+    self.test = test;
+    self.callback = callback;
     
+    if (test == NULL || fn == NULL) {
+        [self doCallback];
+    }
+    
+    [self whilst_doTask_whenTestReturn:NO];
+}
+
+- (void)whilst_doTask_whenTestReturn:(BOOL)testRet {
+    if (self.test() == testRet) {
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            
+            self.task(^(NSError *error){
+                
+                //return the main thread
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self.currentError = error;
+                    if (self.currentError) {
+                        [self doCallback];
+                    }else{
+                        [self whilst_doTask_whenTestReturn:testRet];
+                    }
+                });
+                
+            });
+        });
+    }
 }
 
 #pragma mark - General
@@ -243,7 +291,13 @@
 
 - (void)doCallback {
     if (self.callback) {
-        self.callback(self.currentError, self.result);
+        self.callback(self.currentError);
+    }
+}
+
+- (void)doCallback2 {
+    if (self.callback2) {
+        self.callback2(self.currentError, self.result);
     }
 }
 
