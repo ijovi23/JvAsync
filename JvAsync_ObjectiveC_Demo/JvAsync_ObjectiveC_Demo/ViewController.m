@@ -27,7 +27,7 @@
 }
 
 - (void)btnPressed:(UIButton *)sender {
-    [self whilst_test];
+    [self parallel_test];
 }
 
 - (void)didReceiveMemoryWarning {
@@ -51,7 +51,7 @@
         callback(nil, @"C");
     };
     
-    [[JvAsync async]seriesTasks:@[task1, task2, task3] callback:^(NSError *error, id result) {
+    [[JvAsync async]series_tasks:@[task1, task2, task3] callback:^(NSError *error, id result) {
         if (error) {
             NSLog(@"Error:%@", error.domain);
         }
@@ -79,7 +79,7 @@
         callback(nil, str);
     };
     
-    [[JvAsync async]waterfallTasks:@[task1,
+    [[JvAsync async]waterfall_tasks:@[task1,
                                     task2,
                                     task3]
                           callback:^(NSError *error, id result) {
@@ -93,12 +93,12 @@
 }
 
 - (void)parallel_test {
-    [[JvAsync async]parallelTasks:@[
-                                    ^(JvCallback2 callback) {[NSThread sleepForTimeInterval:2]; NSLog(@"task1"); callback(nil, @"A");},
-                                    ^(JvCallback2 callback) {[NSThread sleepForTimeInterval:6]; NSLog(@"task2"); callback([NSError errorWithDomain:@"HAHA" code:123 userInfo:nil], @"B");},
+    [[JvAsync async]parallel_tasks:@[^(JvCallback2 callback) {[NSThread sleepForTimeInterval:2]; NSLog(@"task1"); callback(nil, @"A");},
+//                                      ^(JvCallback2 callback) {[NSThread sleepForTimeInterval:6]; NSLog(@"task2"); callback([NSError errorWithDomain:@"HAHA" code:123 userInfo:nil], @"B");},
+                                      ^(JvCallback2 callback) {[NSThread sleepForTimeInterval:6]; NSLog(@"task2"); callback(nil, @"B");},
                                     ^(JvCallback2 callback) {[NSThread sleepForTimeInterval:5]; NSLog(@"task3"); callback(nil, @"C");},
                                     ^(JvCallback2 callback) {[NSThread sleepForTimeInterval:3]; NSLog(@"task4"); callback(nil, @"D");},
-                                    ^(JvCallback2 callback) {[NSThread sleepForTimeInterval:4]; NSLog(@"task5"); callback([NSError errorWithDomain:@"HAHA" code:123 userInfo:nil], @"E");},
+                                    ^(JvCallback2 callback) {[NSThread sleepForTimeInterval:4]; NSLog(@"task5"); callback(nil, @"E");},
                                     ] callback:^(NSError *error, id result) {
         if (error) {
             NSLog(@"Error:%@", error.domain);
@@ -112,7 +112,7 @@
 - (void)whilst_test {
     __block int count = 10;
     
-    [[JvAsync async]whilstTest:^BOOL{
+    [[JvAsync async]whilst_test:^BOOL{
         return count > 0;
     } fn:^(JvCallback callback) {
         [NSThread sleepForTimeInterval:0.5];
@@ -121,6 +121,21 @@
     } callback:^(NSError *error) {
         if (error) {
             NSLog(@"Error:%@", error.domain);
+        }
+    }];
+}
+
+- (void)map_test {
+    [[JvAsync async]map_coll:@[@3,@4,@6,@2,@1] iteratee:^(id item, JvCallback2 callback) {
+        [NSThread sleepForTimeInterval:[item floatValue]];
+        NSInteger ret = -[item integerValue];
+        callback(nil, @(ret));
+    } callback:^(NSError *error, id result) {
+        if (error) {
+            NSLog(@"Error:%@", error.domain);
+        }
+        if (result) {
+            NSLog(@"Result:%@", result);
         }
     }];
 }

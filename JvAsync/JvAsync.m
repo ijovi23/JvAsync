@@ -8,8 +8,9 @@
 
 #import "JvAsync.h"
 
-typedef void(^JvCallback3)(NSError *error, id result, id data);
-typedef void(^JvFunc_data) (id data, JvCallback3 callback);
+typedef void(^JvCallback3)(NSError *error, id result, id idx);
+typedef void(^JvFunc_idx) (id idx, JvCallback3 callback);
+typedef void(^JvFunc2_idx) (id idx, id data, JvCallback3 callback);
 
 @interface JvAsync ()
 
@@ -61,7 +62,7 @@ typedef void(^JvFunc_data) (id data, JvCallback3 callback);
 
 #pragma mark - series
 
-- (void)seriesTasks:(NSArray<JvFunc2> *)tasks callback:(JvCallback2)callback {
+- (void)series_tasks:(NSArray<JvFunc2> *)tasks callback:(JvCallback2)callback {
     [self initProperties];
     self.callback2 = callback;
     self.result = self.results;
@@ -104,7 +105,7 @@ typedef void(^JvFunc_data) (id data, JvCallback3 callback);
 
 #pragma mark - waterfall
 
-- (void)waterfallTasks:(NSArray<JvWaterfallFunc> *)tasks callback:(JvCallback2)callback {
+- (void)waterfall_tasks:(NSArray<JvWaterfallFunc> *)tasks callback:(JvCallback2)callback {
     [self initProperties];
     self.callback2 = callback;
     
@@ -149,31 +150,37 @@ typedef void(^JvFunc_data) (id data, JvCallback3 callback);
 
 #pragma mark - parallel
 
-- (void)parallelTasks:(NSArray<JvFunc2> *)tasks callback:(JvCallback2)callback {
+- (void)parallel_tasks:(NSArray<JvFunc2> *)tasks callback:(JvCallback2)callback {
     [self initProperties];
     self.callback2 = callback;
     self.result = self.results;
     
+    if (!(tasks && tasks.count)) {
+        [self doCallback2];
+    }
+    
     [self fillResultsWithCount:tasks.count];
     
-    NSMutableArray<JvFunc_data> *tasks_pl = [NSMutableArray array];
+    NSMutableArray<JvFunc_idx> *tasks_pl = [NSMutableArray array];
     for (JvFunc2 func in tasks) {
-        JvFunc_data func_pl = ^(id data, JvCallback3 callback) {
+        JvFunc_idx func_pl = ^(id idx, JvCallback3 callback) {
             func(^(NSError *error, id result) {
                 if (callback) {
-                    callback(error, result, data);
+                    callback(error, result, idx);
                 }
             });
         };
         [tasks_pl addObject:func_pl];
     }
     
+    __block NSInteger tasksLeftCount = tasks.count;
+    
     dispatch_queue_t queue = dispatch_queue_create("jv.concurrent.parallel", DISPATCH_QUEUE_CONCURRENT);
     
     for (NSUInteger idx = 0; idx < tasks.count; idx++) {
-        JvFunc_data func_pl = tasks_pl[idx];
+        JvFunc_idx func_pl = tasks_pl[idx];
         dispatch_async(queue, ^{
-            func_pl(@(idx), ^(NSError *error, id result, id data){
+            func_pl(@(idx), ^(NSError *error, id result, id idx){
                 if (self.currentError) {
                     //When an error occurred during running a task, throw away the incomplete tasks' resuls;
                     return;
@@ -181,9 +188,10 @@ typedef void(^JvFunc_data) (id data, JvCallback3 callback);
                 //return the main thread
                 dispatch_async(dispatch_get_main_queue(), ^{
                     self.currentError = error;
-                    NSUInteger func_idx = [data integerValue];
+                    NSUInteger func_idx = [idx integerValue];
                     [self replaceObjectInResultsAtIndex:func_idx withObject:result];
-                    if (self.currentError) {
+                    tasksLeftCount--;
+                    if (self.currentError || tasksLeftCount <= 0) {
                         [self doCallback2];
                     }
                 });
@@ -195,7 +203,7 @@ typedef void(^JvFunc_data) (id data, JvCallback3 callback);
 
 #pragma mark - whilst & until
 
-- (void)whilstTest:(JvTest)test fn:(JvFunc)fn callback:(JvCallback)callback {
+- (void)whilst_test:(JvTest)test fn:(JvFunc)fn callback:(JvCallback)callback {
     [self initProperties];
     self.task = fn;
     self.test = test;
@@ -208,7 +216,7 @@ typedef void(^JvFunc_data) (id data, JvCallback3 callback);
     [self whilst_doTask_whenTestReturn:YES];
 }
 
-- (void)untilTest:(JvTest)test fn:(JvFunc)fn callback:(JvCallback)callback {
+- (void)until_test:(JvTest)test fn:(JvFunc)fn callback:(JvCallback)callback {
     [self initProperties];
     self.task = fn;
     self.test = test;
@@ -237,6 +245,65 @@ typedef void(^JvFunc_data) (id data, JvCallback3 callback);
                     }
                 });
                 
+            });
+        });
+        
+    }else{
+        [self doCallback];
+    }
+}
+
+#pragma mark - each & eachLimit
+
+- (void)eachLimit_coll:(NSArray *)coll limit:(NSInteger)limit iteratee:(JvIterator)iteratee callback:(JvCallback)callback {
+}
+
+- (void)each_coll:(NSArray *)coll iteratee:(JvIterator)iteratee callback:(JvCallback)callback {
+}
+
+#pragma mark - map
+
+- (void)map_coll:(NSArray *)coll iteratee:(JvIterator2)iteratee callback:(JvCallback2)callback {
+    [self initProperties];
+    self.callback2 = callback;
+    self.result = self.results;
+    
+    if (!(coll && coll.count && iteratee != NULL)) {
+        [self doCallback2];
+    }
+    
+    [self fillResultsWithCount:coll.count];
+    
+    JvFunc2_idx func_pl = ^(id idx, id data, JvCallback3 callback) {
+        iteratee(data, ^(NSError *error, id result) {
+            if (callback) {
+                callback(error, result, idx);
+            }
+        });
+    };
+    
+    __block NSInteger tasksLeftCount = coll.count;
+    
+    dispatch_queue_t queue = dispatch_queue_create("jv.concurrent.map", DISPATCH_QUEUE_CONCURRENT);
+    
+    for (NSUInteger idx = 0; idx < coll.count; idx++) {
+        id curItem = coll[idx];
+        dispatch_async(queue, ^{
+            func_pl(@(idx), curItem, ^(NSError *error, id result, id idx) {
+                if (self.currentError) {
+                    //When an error occurred during running a task, throw away the incomplete tasks' resuls;
+                    return;
+                }
+                //return the main thread
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self.currentError = error;
+                    NSUInteger item_idx = [idx integerValue];
+                    [self replaceObjectInResultsAtIndex:item_idx withObject:result];
+                    tasksLeftCount--;
+                    if (self.currentError || tasksLeftCount <= 0) {
+                        [self doCallback2];
+                    }
+                });
             });
         });
     }
