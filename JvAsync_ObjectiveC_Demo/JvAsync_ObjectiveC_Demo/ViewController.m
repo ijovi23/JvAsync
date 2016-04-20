@@ -27,7 +27,7 @@
 }
 
 - (void)btnPressed:(UIButton *)sender {
-    [self parallel_test];
+    [self map_test];
 }
 
 - (void)didReceiveMemoryWarning {
@@ -79,17 +79,14 @@
         callback(nil, str);
     };
     
-    [[JvAsync async]waterfall_tasks:@[task1,
-                                    task2,
-                                    task3]
-                          callback:^(NSError *error, id result) {
-                              if (error) {
-                                  NSLog(@"Error:%@", error.domain);
-                              }
-                              if (result) {
-                                  NSLog(@"Result:%@", result);
-                              }
-                          }];
+    [[JvAsync async]waterfall_tasks:@[task1, task2, task3] callback:^(NSError *error, id result) {
+        if (error) {
+            NSLog(@"Error:%@", error.domain);
+        }
+        if (result) {
+            NSLog(@"Result:%@", result);
+        }
+    }];
 }
 
 - (void)parallel_test {
@@ -110,7 +107,7 @@
 }
 
 - (void)whilst_test {
-    __block int count = 10;
+    __block int count = 5;
     
     [[JvAsync async]whilst_test:^BOOL{
         return count > 0;
@@ -128,6 +125,7 @@
 - (void)map_test {
     [[JvAsync async]map_coll:@[@3,@4,@6,@2,@1] iteratee:^(id item, JvCallback2 callback) {
         [NSThread sleepForTimeInterval:[item floatValue]];
+        NSLog(@"Processed:%@", item);
         NSInteger ret = -[item integerValue];
         callback(nil, @(ret));
     } callback:^(NSError *error, id result) {
