@@ -19,6 +19,7 @@ Add **JvAsync.h** and **JvAsync.m** to your project.
 * [`whilst`](#whilst)
 * [`until`](#until)
 * [`map`](#map)
+* [`reduce`](#reduce)
 
 #Usage
 
@@ -29,8 +30,9 @@ typedef void(^JvCallback)		(NSError *error);
 typedef void(^JvCallback2)		(NSError *error, id result);
 typedef void(^JvFunc)			(JvCallback callback);
 typedef void(^JvFunc2)			(JvCallback2 callback);
-typedef void(^JvIterator)		(id item, JvCallback callback);
-typedef void(^JvIterator2)		(id item, JvCallback2 callback);
+typedef void(^JvIteratee)		(id item, JvCallback callback);
+typedef void(^JvIteratee2)		(id item, JvCallback2 callback);
+typedef void(^JvIteratee3)		(id memo, id item, JvCallback2 callback);
 typedef void(^JvWaterfallFunc)	(id data, JvCallback2 callback);
 typedef BOOL(^JvTest)			();
 ```
@@ -217,7 +219,7 @@ The inverse of [`whilst`](#whilst).
 ##map
 
 ```objective-c
-- (void)map_coll:(NSArray *)coll iteratee:(JvIterator2)iteratee callback:(JvCallback2)callback;
+- (void)map_coll:(NSArray *)coll iteratee:(JvIteratee2)iteratee callback:(JvCallback2)callback;
 ```
 
 Produces a new collection of values by mapping each value in `coll` through the `iteratee` function. The `iteratee` is called with an item from `coll` and a callback for when it has finished processing. Each of these callback takes 2 arguments: an `error`, and the transformed item from `coll`. If `iteratee` passes an error to its callback, the main `callback` (for the `map` function) is immediately called with the error.
@@ -252,3 +254,42 @@ Note, that since this function applies the `iteratee` to each item in parallel, 
 	Result:("-3","-4","-6","-2","-1")
 */
 ```	
+
+<a name="reduce"></a>
+
+##reduce
+
+```objective-c
+- (void)reduce_coll:(NSArray *)coll memo:(id)memo iteratee:(JvIteratee3)iteratee callback:(JvCallback2)callback;
+```
+
+Reduces `coll` into a single value using an async `iteratee` to return each successive step. `memo` is the initial state of the reduction. This function only operates in series.
+
+####Example
+
+```objective-c
+[[JvAsync async]reduce_coll:@[@1, @2, @3, @4, @5] memo:@0.5 iteratee:^(id memo, id item, JvCallback2 callback) {
+        [NSThread sleepForTimeInterval:0.5];
+        float result = [memo floatValue] + [item floatValue];
+        NSLog(@"memo:%@ item:%@ result:%@", memo, item, @(result));
+        callback(nil, @(result));
+    } callback:^(NSError *error, id result) {
+        if (error) {
+            NSLog(@"Error:%@", error.domain);
+        }
+        if (result) {
+            NSLog(@"Result:%@", result);
+        }
+    }];
+
+/* 
+	[Output]:
+	memo:0.5 item:1 result:1.5
+	memo:1.5 item:2 result:3.5
+	memo:3.5 item:3 result:6.5
+	memo:6.5 item:4 result:10.5
+	memo:10.5 item:5 result:15.5
+	Result:15.5
+*/
+```	
+

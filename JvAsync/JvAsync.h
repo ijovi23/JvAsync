@@ -8,14 +8,15 @@
 
 #import <Foundation/Foundation.h>
 
-typedef void(^JvCallback)(NSError *error);
-typedef void(^JvCallback2)(NSError *error, id result);
-typedef void(^JvFunc)(JvCallback callback);
-typedef void(^JvFunc2)(JvCallback2 callback);
-typedef void(^JvIterator) (id item, JvCallback callback);
-typedef void(^JvIterator2) (id item, JvCallback2 callback);
-typedef void(^JvWaterfallFunc) (id data, JvCallback2 callback);
-typedef BOOL(^JvTest)();
+typedef void(^JvCallback)       (NSError *error);
+typedef void(^JvCallback2)      (NSError *error, id result);
+typedef void(^JvFunc)           (JvCallback callback);
+typedef void(^JvFunc2)          (JvCallback2 callback);
+typedef void(^JvIteratee)       (id item, JvCallback callback);
+typedef void(^JvIteratee2)      (id item, JvCallback2 callback);
+typedef void(^JvIteratee3)      (id memo, id item, JvCallback2 callback);
+typedef void(^JvWaterfallFunc)  (id data, JvCallback2 callback);
+typedef BOOL(^JvTest)           ();
 
 @interface JvAsync : NSObject
 
@@ -31,6 +32,8 @@ typedef BOOL(^JvTest)();
 
 - (void)until_test:(JvTest)test fn:(JvFunc)fn callback:(JvCallback)callback;
 
-- (void)map_coll:(NSArray *)coll iteratee:(JvIterator2)iteratee callback:(JvCallback2)callback;
+- (void)map_coll:(NSArray *)coll iteratee:(JvIteratee2)iteratee callback:(JvCallback2)callback;
+
+- (void)reduce_coll:(NSArray *)coll memo:(id)memo iteratee:(JvIteratee3)iteratee callback:(JvCallback2)callback;
 
 @end

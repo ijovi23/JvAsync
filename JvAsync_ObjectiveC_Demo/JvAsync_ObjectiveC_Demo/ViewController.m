@@ -27,7 +27,7 @@
 }
 
 - (void)btnPressed:(UIButton *)sender {
-    [self map_test];
+    [self reduce_test];
 }
 
 - (void)didReceiveMemoryWarning {
@@ -128,6 +128,22 @@
         NSLog(@"Processed:%@", item);
         NSInteger ret = -[item integerValue];
         callback(nil, @(ret));
+    } callback:^(NSError *error, id result) {
+        if (error) {
+            NSLog(@"Error:%@", error.domain);
+        }
+        if (result) {
+            NSLog(@"Result:%@", result);
+        }
+    }];
+}
+
+- (void)reduce_test {
+    [[JvAsync async]reduce_coll:@[@1, @2, @3, @4, @5] memo:@0.5 iteratee:^(id memo, id item, JvCallback2 callback) {
+        [NSThread sleepForTimeInterval:0.5];
+        float result = [memo floatValue] + [item floatValue];
+        NSLog(@"memo:%@ item:%@ result:%@", memo, item, @(result));
+        callback(nil, @(result));
     } callback:^(NSError *error, id result) {
         if (error) {
             NSLog(@"Error:%@", error.domain);

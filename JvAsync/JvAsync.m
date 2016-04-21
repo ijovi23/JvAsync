@@ -17,10 +17,14 @@ typedef void(^JvFunc2_idx) (id idx, id data, JvCallback3 callback);
 @property (copy, nonatomic) JvFunc task;
 @property (strong, nonatomic) NSMutableArray *taskStack;
 
+@property (strong, nonatomic) NSMutableArray *collection;
+
 @property (copy, nonatomic) JvCallback callback;
 @property (copy, nonatomic) JvCallback2 callback2;
 
 @property (copy, nonatomic) JvTest test;
+
+@property (copy, nonatomic) JvIteratee3 iteratee3;
 
 @property (strong, atomic) id result;
 @property (strong, nonatomic) NSMutableArray *results;
@@ -255,15 +259,9 @@ typedef void(^JvFunc2_idx) (id idx, id data, JvCallback3 callback);
 
 #pragma mark - each & eachLimit
 
-- (void)eachLimit_coll:(NSArray *)coll limit:(NSInteger)limit iteratee:(JvIterator)iteratee callback:(JvCallback)callback {
-}
-
-- (void)each_coll:(NSArray *)coll iteratee:(JvIterator)iteratee callback:(JvCallback)callback {
-}
-
 #pragma mark - map
 
-- (void)map_coll:(NSArray *)coll iteratee:(JvIterator2)iteratee callback:(JvCallback2)callback {
+- (void)map_coll:(NSArray *)coll iteratee:(JvIteratee2)iteratee callback:(JvCallback2)callback {
     [self initProperties];
     self.callback2 = callback;
     self.result = self.results;
@@ -307,6 +305,52 @@ typedef void(^JvFunc2_idx) (id idx, id data, JvCallback3 callback);
             });
         });
     }
+}
+
+#pragma mark - reduce
+
+- (void)reduce_coll:(NSArray *)coll memo:(id)memo iteratee:(JvIteratee3)iteratee callback:(JvCallback2)callback {
+    [self initProperties];
+    self.callback2 = callback;
+    self.result = memo;
+    
+    if (!(coll && coll.count && iteratee != NULL)) {
+        [self doCallback2];
+    }
+    
+    self.iteratee3 = iteratee;
+    self.collection = [coll mutableCopy];
+    
+    if (!self.result) {
+        self.result = self.collection.firstObject;
+        [self.collection removeObjectAtIndex:0];
+    }
+    
+    [self reduce_doIteratee];
+    
+}
+
+- (void)reduce_doIteratee {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        
+        self.iteratee3(self.result, self.collection.firstObject, ^(NSError *error, id result) {
+            
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.currentError = error;
+                self.result = result;
+                
+                [self.collection removeObjectAtIndex:0];
+                
+                if (self.currentError || self.collection.count <= 0) {
+                    [self doCallback2];
+                }else{
+                    [self reduce_doIteratee];
+                }
+                
+            });
+            
+        });
+    });
 }
 
 #pragma mark - General
